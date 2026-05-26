@@ -19,11 +19,11 @@ function isMessageParamArray(x: unknown): x is Anthropic.MessageParam[] {
   return true;
 }
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
-  }
-
+// Named-method export — Vercel routes POST /api/chat here.
+// `export default` would bind to the legacy (req, res) Node signature
+// and ignore a returned Response; the named-method export uses the
+// Web Request/Response style.
+export async function POST(req: Request): Promise<Response> {
   let body: RequestBody;
   try {
     body = (await req.json()) as RequestBody;
