@@ -16,9 +16,6 @@ export default function TicketBreadcrumb({ label, index }: Props) {
   } as CSSProperties;
   return (
     <div className="ticket-stub" style={style}>
-      <span className="ticket-stub__admit" aria-hidden="true">
-        ★ Admit One
-      </span>
       <span className="ticket-stub__phrase">{label}</span>
     </div>
   );

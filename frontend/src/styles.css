@@ -672,17 +672,6 @@ body::before {
   pointer-events: none;
 }
 
-.ticket-stub__admit {
-  flex-shrink: 0;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #9a3a2c;
-  white-space: nowrap;
-  opacity: 0.85;
-}
-
 .ticket-stub__phrase {
   flex: 1;
   min-width: 0;
@@ -713,9 +702,6 @@ body::before {
   .ticket-stub {
     width: 85%;
     font-size: 11px;
-  }
-  .ticket-stub__admit {
-    font-size: 8px;
   }
 }
 
