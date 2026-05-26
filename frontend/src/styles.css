@@ -75,19 +75,11 @@ body::before {
   position: relative;
 }
 
-/* Inner conversation column — capped at --max-w, centered within .app.
-   When the sidebar collapses, .app expands; .app__inner stays centered
-   within the new wider .app via margin: 0 auto. */
-.app__inner {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: var(--max-w);
-  margin: 0 auto;
-  padding: 0 1.25rem;
-}
+/* .app__inner removed: each section (.messages, .composer, .mood-suggestions)
+   is now a direct child of .app and handles its own max-width centering.
+   The scroll container (.messages) is full-width so the scrollbar sits at
+   the right edge of the main area, not inside the centered conversation
+   column. */
 
 /* Sidebar — two layouts stacked via absolute positioning. The outer .sidebar
    animates between 260px (expanded) and 56px (mini rail). Inner layouts
@@ -280,15 +272,26 @@ body::before {
   }
 }
 
-/* Messages */
+/* Messages — full-width scroll container. Scrollbar sits at the right edge
+   of the main area (just inside the viewport edge when the sidebar is
+   expanded), not at the right edge of the centered conversation column. */
 .messages {
   flex: 1;
   overflow-y: auto;
-  padding: 1.5rem 0 1rem;
+  min-height: 0;
+  transition: flex 200ms ease;
+}
+
+/* Inner conversation column — capped at --max-w, centered horizontally
+   inside the full-width scroll area. This is where the content lives. */
+.messages__column {
+  width: 100%;
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 1rem;
   display: flex;
   flex-direction: column;
   gap: 2rem;
-  transition: flex 200ms ease;
 }
 
 /* Empty-state greeting — hero line above the input bar */
@@ -699,9 +702,15 @@ body::before {
   transform: translateY(1px);
 }
 
-/* Empty-state layout — input bar rests at ~40% from top, tagline just above it */
+/* Empty-state layout — input bar rests at ~40% from top, greeting just above it.
+   The scroll area (.messages) is capped at 38vh and the column inside is
+   bottom-aligned so the greeting sits flush against the bottom of that area. */
 .app--empty .messages {
   flex: 0 0 38vh;
+}
+
+.app--empty .messages__column {
+  min-height: 100%;
   justify-content: flex-end;
   padding-bottom: 2.25rem; /* gap between greeting and composer (~36px) */
 }
@@ -727,9 +736,13 @@ body::before {
   animation: credits-roll-in 350ms ease-out both;
 }
 
-/* Composer — blends with the page; the border defines the shape, not the fill */
+/* Composer — blends with the page; the border defines the shape, not the fill.
+   Centers itself inside the full-width .app since .app__inner no longer wraps. */
 .composer {
-  padding: 0.6rem 0 1.5rem;
+  width: 100%;
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 0.6rem 1.25rem 1.5rem;
   background: var(--bg);
 }
 
@@ -808,7 +821,17 @@ body::before {
   cursor: not-allowed;
 }
 
-/* Scrollbars */
+/* Scrollbars — thin and theme-matching across both Firefox and WebKit.
+   Firefox needs scrollbar-width + scrollbar-color (was missing → Firefox
+   was falling back to the OS default ~14-16px). WebKit uses the
+   ::-webkit-scrollbar pseudo-elements. Same look on both. */
+.messages,
+.composer__input,
+.markdown pre {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
 .messages::-webkit-scrollbar,
 .composer__input::-webkit-scrollbar,
 .markdown pre::-webkit-scrollbar {
@@ -825,14 +848,21 @@ body::before {
 .messages::-webkit-scrollbar-thumb,
 .composer__input::-webkit-scrollbar-thumb,
 .markdown pre::-webkit-scrollbar-thumb {
-  background: var(--border-hi);
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 4px;
 }
 
 .messages::-webkit-scrollbar-thumb:hover,
 .composer__input::-webkit-scrollbar-thumb:hover,
 .markdown pre::-webkit-scrollbar-thumb:hover {
-  background: #4a4a52;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* No arrow buttons (matters on Windows; macOS doesn't render them anyway) */
+.messages::-webkit-scrollbar-button,
+.composer__input::-webkit-scrollbar-button,
+.markdown pre::-webkit-scrollbar-button {
+  display: none;
 }
 
 /* Mobile: sidebar becomes an off-canvas drawer. No mini rail. */
