@@ -117,11 +117,14 @@ const MARKDOWN_COMPONENTS: Components = {
 const SIDEBAR_KEY = "cinema-daddy-sidebar-open";
 const MAX_TEXTAREA_HEIGHT = 220;
 
+// Empty-state chips. Each one demonstrates a different tool path so the
+// landing experience hints at the range of things CinemaDaddy can do
+// rather than only the mood/discover capability.
 const MOOD_SUGGESTIONS = [
-  "Something cozy under 90 minutes on Netflix",
-  "Best sci-fi I haven't heard of",
-  "A thriller from the last 5 years",
-  "Funny movie for tonight, under 2 hours",
+  "Where can I stream The Bear?",
+  "Best episodes of Breaking Bad",
+  "Show me the trailer of Interstellar",
+  "Something scary under 120 minutes on Netflix",
 ];
 
 function getInitialSidebarOpen(): boolean {
