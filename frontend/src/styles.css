@@ -617,24 +617,113 @@ body::before {
   word-wrap: break-word;
 }
 
-/* Tool-call breadcrumb */
-.tool-status {
-  color: var(--text-muted);
-  font-style: italic;
-  font-size: 0.88em;
-  margin: 0.4em 0;
-  line-height: 1.5;
+/* Tool-call breadcrumb — styled as a movie-theater admission ticket stub.
+   Light cream cardstock on the dark theater background; intentionally
+   stands out as a tangible artifact in the conversation flow. */
+.ticket-stub {
+  --ticket-rot: 0deg;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: clamp(260px, 90%, 320px);
+  min-height: 38px;
+  margin: 0.5em 0;
+  padding: 0.4rem 0.85rem 0.4rem 28px;
+  border: 1px solid #b8a47c;
+  /* Left border lives under the perforations — hide it so the cutouts
+     don't have a visible stripe peeking through. */
+  border-left: none;
+  border-radius: 2px;
+  color: #4a3a26;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  /* Aged-paper fill: a soft top-down gradient + three faint grain dots
+     repeated as a subtle noise field. */
+  background-color: #e8dcc4;
+  background-image:
+    radial-gradient(circle at 22% 35%, rgba(74, 58, 38, 0.07) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 68% 72%, rgba(74, 58, 38, 0.05) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 45% 18%, rgba(74, 58, 38, 0.04) 0 1px, transparent 1.5px),
+    linear-gradient(180deg, #ecdfc5 0%, #ddd0b2 100%);
+  background-size: 9px 9px, 13px 13px, 17px 17px, 100% 100%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
-.tool-status__arrow {
-  color: var(--amber);
-  font-style: normal;
-  font-weight: 600;
-  margin-right: 0.45em;
+/* Perforated tear-edge. Dark-bg circles overlay the left edge, "punching"
+   scallops out of the cream cardstock. Background color matches the page
+   so the cutouts read as actual holes. */
+.ticket-stub::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  background-image: radial-gradient(
+    circle at 4px 50%,
+    var(--bg) 4px,
+    transparent 4.5px
+  );
+  background-size: 12px calc(100% / 7);
+  background-repeat: repeat-y;
+  pointer-events: none;
 }
 
-.tool-status__phrase {
-  /* container handles tone */
+.ticket-stub__admit {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9a3a2c;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.ticket-stub__phrase {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant: small-caps;
+}
+
+@keyframes ticket-drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) rotate(-1.5deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(var(--ticket-rot));
+  }
+}
+
+.message--assistant .ticket-stub {
+  animation: ticket-drop-in 380ms ease-out both;
+  transform: rotate(var(--ticket-rot));
+  transform-origin: 18px 50%;
+}
+
+@media (max-width: 540px) {
+  .ticket-stub {
+    width: 85%;
+    font-size: 11px;
+  }
+  .ticket-stub__admit {
+    font-size: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message--assistant .ticket-stub {
+    animation: none;
+    transform: none;
+  }
 }
 
 /* Streaming cursor */
@@ -982,11 +1071,12 @@ body::before {
   padding-bottom: 2.25rem; /* gap between greeting and composer (~36px) */
 }
 
-/* Credits-roll fade-up: new assistant chunks fade in from 10px below.
-   Applied only to .markdown and .tool-status — CSS animations fire on
-   element mount, so streaming text growing inside an existing .markdown
-   div does NOT re-trigger, and older messages don't re-animate on
-   re-render. */
+/* Credits-roll fade-up: new assistant text chunks fade in from 10px
+   below. Applied only to .markdown — CSS animations fire on element
+   mount, so streaming text growing inside an existing .markdown div does
+   NOT re-trigger, and older messages don't re-animate on re-render.
+   Ticket stubs run their own ticket-drop-in animation (with the subtle
+   rotation settle) defined alongside the .ticket-stub styles above. */
 @keyframes credits-roll-in {
   from {
     opacity: 0;
@@ -998,8 +1088,7 @@ body::before {
   }
 }
 
-.message--assistant .markdown,
-.message--assistant .tool-status {
+.message--assistant .markdown {
   animation: credits-roll-in 350ms ease-out both;
 }
 

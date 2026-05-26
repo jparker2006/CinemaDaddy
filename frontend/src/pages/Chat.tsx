@@ -11,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import { useAuth } from "../lib/auth";
 import ConversationList from "../components/ConversationList";
 import CurtainsIntro from "../components/CurtainsIntro";
+import TicketBreadcrumb from "../components/TicketBreadcrumb";
 import UserMenu from "../components/UserMenu";
 import {
   createConversation,
@@ -755,12 +756,11 @@ export default function Chat() {
                           </ReactMarkdown>
                         </div>
                       ) : (
-                        <div key={j} className="tool-status">
-                          <span className="tool-status__arrow">→</span>
-                          <span className="tool-status__phrase">
-                            {friendlyToolPhrase(part.name, part.input)}
-                          </span>
-                        </div>
+                        <TicketBreadcrumb
+                          key={j}
+                          index={j}
+                          label={friendlyToolPhrase(part.name, part.input)}
+                        />
                       ),
                     )}
                     {item.streaming && parts.length > 0 && !lastIsText && (
