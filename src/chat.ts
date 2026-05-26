@@ -96,12 +96,13 @@ function parseChips(raw: string): string[] {
 const TITLE_PROMPT = `Generate a very short title (3-5 words) for this CinemaDaddy chat. The title should name the specific movie or show the conversation is about, plus the subject (rating, cast, where to stream, etc.) when relevant.
 
 Rules:
-- Return ONLY the title text, nothing else
+- Return ONLY the title text, on a single line, as plain text
+- NO markdown formatting whatsoever — no **bold**, no ***, no ---, no #, no \`backticks\`, no italics, no bullets
 - 3 to 5 words
-- No quotes, no trailing punctuation
+- No quotes around the title, no trailing punctuation
 - Title Case
-- Be specific: "Severance Season 2 Rating", "Cast of The Bear", "Sci-fi Recommendations"
-- Never generic ("TV Show Question", "Movie Chat")`;
+- Be specific: Severance Season 2 Rating, Cast of The Bear, Sci-fi Recommendations
+- Never generic (TV Show Question, Movie Chat)`;
 
 export async function generateTitle(
   client: Anthropic,
@@ -120,13 +121,29 @@ export async function generateTitle(
       .filter((b) => b.type === "text")
       .map((b) => b.text ?? "")
       .join("");
-    // Strip any wrapping quotes Haiku might add despite the instructions,
-    // trim, and cap length defensively in case it ignored the word limit.
-    const cleaned = text
-      .trim()
-      .replace(/^["'`]+/, "")
-      .replace(/["'`]+$/, "")
+    // Take only the first non-empty line in case Haiku adds an explanation
+    // after the title.
+    const firstLine =
+      text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .find((l) => l.length > 0) ?? "";
+    // Aggressive markdown / quote / punctuation scrub. Order matters:
+    // strip emphasis pairs first (preserving inner text), then strip any
+    // stray markers left over.
+    const cleaned = firstLine
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/__([^_]+)__/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1")
+      .replace(/_([^_]+)_/g, "$1")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/^[#>\-*=`~|]+\s*/, "")
+      .replace(/\s*[\-=]{2,}\s*/g, " ")
+      .replace(/[*_`~]/g, "")
+      .replace(/^["'“”‘’]+/, "")
+      .replace(/["'“”‘’]+$/, "")
       .replace(/[.!?]+$/, "")
+      .replace(/\s+/g, " ")
       .trim();
     if (!cleaned) return null;
     return cleaned.length > 60 ? cleaned.slice(0, 60).trimEnd() + "…" : cleaned;
