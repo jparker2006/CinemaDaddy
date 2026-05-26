@@ -1,8 +1,12 @@
 :root {
-  --bg: #0a0a0b;
+  /* Single base surface — used identically for page AND sidebar */
+  --bg: #0e0e10;
+  /* Reserved for small contained elements (inline code, pre blocks) — not page surfaces */
   --bg-elev: #15151a;
   --bg-elev-2: #1c1c22;
-  --border: #2a2a30;
+  /* Strict palette borders */
+  --divider: rgba(255, 255, 255, 0.06); /* the only neutral dividing line */
+  --border: #2a2a30;                     /* legacy — kept for markdown tables/hr/blockquotes */
   --border-hi: #3a3a42;
   --text: #e8e6e0;
   --text-bright: #f4f2ec;
@@ -11,7 +15,9 @@
   --amber: #d4a24c;
   --amber-hi: #e8b04b;
   --amber-glow: rgba(212, 162, 76, 0.18);
-  --amber-low: rgba(212, 162, 76, 0.08);
+  /* Two amber states: muted (resting borders), full (var(--amber) — focus, hover, logo) */
+  --amber-muted: rgba(212, 162, 76, 0.25);
+  --amber-low: rgba(212, 162, 76, 0.08); /* hover-fill tint only */
   --danger: #cf6679;
   --max-w: 780px;
   --serif: "Playfair Display", "Cormorant Garamond", Georgia, serif;
@@ -33,12 +39,6 @@ body,
 
 body {
   background-color: var(--bg);
-  background-image: radial-gradient(
-    ellipse at 50% 30%,
-    #15131a 0%,
-    var(--bg) 55%,
-    #050505 100%
-  );
   color: var(--text);
   font-family: var(--sans);
   font-size: 15px;
@@ -58,56 +58,226 @@ body::before {
   mix-blend-mode: overlay;
 }
 
-.app {
+/* Shell: outer flex row holding sidebar + main app column */
+.shell {
   position: relative;
   z-index: 2;
   display: flex;
-  flex-direction: column;
   height: 100vh;
+}
+
+/* Main app column — fills all space after the sidebar */
+.app {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* Inner conversation column — capped at --max-w, centered within .app.
+   When the sidebar collapses, .app expands; .app__inner stays centered
+   within the new wider .app via margin: 0 auto. */
+.app__inner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
   max-width: var(--max-w);
   margin: 0 auto;
   padding: 0 1.25rem;
 }
 
-/* Header */
-.header {
+/* Sidebar — two layouts stacked via absolute positioning. The outer .sidebar
+   animates between 260px (expanded) and 56px (mini rail). Inner layouts
+   fade between themselves via opacity. */
+.sidebar {
+  position: relative;
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--bg);
+  border-right: 1px solid var(--divider);
+  overflow: hidden;
+  transition: width 200ms ease;
+}
+
+.sidebar__expanded {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 260px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 0.85rem 1.25rem;
+  transition: opacity 150ms ease;
+}
+
+.sidebar__mini {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 56px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem 0 1.25rem;
+  gap: 1rem;
+  transition: opacity 150ms ease;
+}
+
+/* Cross-fade between layouts — desktop only (mobile uses drawer behavior) */
+@media (min-width: 769px) {
+  .shell--sidebar-open .sidebar__mini {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .shell--sidebar-closed .sidebar__expanded {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .shell--sidebar-closed .sidebar {
+    width: 56px;
+  }
+}
+
+.sidebar__top {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  padding: 1.25rem 0 0.9rem;
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  background: linear-gradient(to bottom, var(--bg) 70%, transparent);
-  z-index: 10;
+  align-items: center;
+  min-height: 30px;
+  margin-bottom: 0.85rem;
+  padding: 0 0.2rem;
 }
 
-.brand {
+.sidebar__brand {
   font-family: var(--serif);
   font-weight: 700;
-  font-size: 2rem;
+  font-size: 1.2rem;
   margin: 0;
-  letter-spacing: 0.005em;
   color: var(--amber);
-  text-shadow: 0 0 28px var(--amber-glow);
+  letter-spacing: 0.005em;
 }
 
-.reset-btn {
+.sidebar__close {
   background: transparent;
-  border: 1px solid var(--border-hi);
+  border: none;
   color: var(--text-muted);
-  padding: 0.4rem 0.85rem;
-  border-radius: 7px;
-  font-size: 0.82rem;
-  font-family: inherit;
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  padding: 0.4rem;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
 }
 
-.reset-btn:hover {
-  border-color: var(--amber);
+.sidebar__close:hover {
   color: var(--amber);
   background: var(--amber-low);
+}
+
+/* Mini-rail icon buttons */
+.mini-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  padding: 0;
+  border-radius: 8px;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.mini-btn:hover {
+  color: var(--text-bright);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.new-chat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45em;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  background: transparent;
+  border: 1px solid var(--amber-muted);
+  color: var(--amber);
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.new-chat:hover {
+  background: var(--amber-low);
+  color: var(--amber-hi);
+  border-color: var(--amber);
+}
+
+.new-chat__plus {
+  font-size: 1.1em;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.sidebar__label {
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 1.6rem 0 0.5rem;
+  padding: 0 0.3rem;
+}
+
+.sidebar__history {
+  flex: 1;
+  min-height: 0;
+  /* placeholder — will hold history items once memory lands */
+}
+
+/* Backdrop dim for mobile sidebar overlay */
+.shell__backdrop {
+  display: none;
+}
+
+/* Sidebar-trigger — mobile only, floats top-left of .app since the main
+   content has no header anymore. Desktop uses the in-sidebar / mini-rail
+   buttons instead. */
+.sidebar-trigger {
+  position: absolute;
+  left: 0.85rem;
+  top: 0.85rem;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 7px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+  z-index: 5;
+}
+
+.sidebar-trigger:hover {
+  color: var(--amber);
+  background: var(--amber-low);
+}
+
+@media (max-width: 768px) {
+  .sidebar-trigger {
+    display: inline-flex;
+  }
 }
 
 /* Messages */
@@ -118,15 +288,20 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 2rem;
+  transition: flex 200ms ease;
 }
 
-.welcome {
-  color: var(--text-faint);
+/* Empty-state greeting — hero line above the input bar */
+.greeting {
   text-align: center;
-  padding: 4rem 0 1rem;
-  font-style: italic;
+  color: var(--text);
   font-family: var(--serif);
-  font-size: 1.05rem;
+  font-size: 2.25rem;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.005em;
+  margin: 0;
+  padding: 0 1rem;
 }
 
 .message {
@@ -398,25 +573,179 @@ body::before {
   margin: 1.1em 0;
 }
 
-/* Composer */
+/* Posters */
+.poster {
+  display: block;
+  max-width: 220px;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  box-shadow:
+    0 0 26px rgba(212, 162, 76, 0.18),
+    0 8px 24px rgba(0, 0, 0, 0.45);
+  margin: 0.8em 0;
+}
+
+.poster-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75em;
+  margin: 0.9em 0;
+}
+
+.poster-grid .poster {
+  max-width: 130px;
+  margin: 0;
+}
+
+/* Trailer embed — 16:9, theater-themed */
+.trailer {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  aspect-ratio: 16 / 9;
+  margin: 0.9em 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(212, 162, 76, 0);
+  transition: box-shadow 0.2s ease;
+}
+
+.trailer:hover {
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.55),
+    0 0 24px rgba(212, 162, 76, 0.22),
+    0 0 0 1px rgba(212, 162, 76, 0.35);
+}
+
+.trailer__iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+/* Suggested follow-up chips */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 0.9em 0 0.2em;
+}
+
+.chip {
+  font-family: inherit;
+  font-size: 0.82rem;
+  padding: 0.42rem 0.9rem;
+  background: transparent;
+  border: 1px solid var(--amber-muted);
+  color: var(--amber);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s,
+    transform 0.05s;
+}
+
+.chip:hover {
+  border-color: var(--amber);
+  background: var(--amber-low);
+  color: var(--amber-hi);
+}
+
+.chip:active {
+  transform: translateY(1px);
+}
+
+/* Empty-state mood suggestion chips — passive starter prompts below the composer.
+   Distinct from follow-up .chip: neutral border (not amber) so they don't compete
+   with the input bar's amber border. */
+.mood-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+  margin: 1.25rem auto 0;
+  max-width: 620px;
+  padding: 0 1rem 1rem;
+}
+
+.mood-chip {
+  font-family: inherit;
+  font-size: 0.82rem;
+  padding: 0.5rem 0.95rem;
+  background: transparent;
+  border: 1px solid var(--divider);
+  color: var(--text-muted);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.mood-chip:hover {
+  border-color: var(--amber-muted);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.mood-chip:active {
+  transform: translateY(1px);
+}
+
+/* Empty-state layout — input bar rests at ~40% from top, tagline just above it */
+.app--empty .messages {
+  flex: 0 0 38vh;
+  justify-content: flex-end;
+  padding-bottom: 2.25rem; /* gap between greeting and composer (~36px) */
+}
+
+/* Credits-roll fade-up: new assistant chunks fade in from 10px below.
+   Applied only to .markdown and .tool-status — CSS animations fire on
+   element mount, so streaming text growing inside an existing .markdown
+   div does NOT re-trigger, and older messages don't re-animate on
+   re-render. */
+@keyframes credits-roll-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message--assistant .markdown,
+.message--assistant .tool-status {
+  animation: credits-roll-in 350ms ease-out both;
+}
+
+/* Composer — blends with the page; the border defines the shape, not the fill */
 .composer {
-  position: sticky;
-  bottom: 0;
   padding: 0.6rem 0 1.5rem;
-  background: linear-gradient(to top, var(--bg) 72%, transparent);
+  background: var(--bg);
 }
 
 .composer__wrap {
-  position: relative;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+  background: var(--bg);
+  border: 1px solid var(--amber-muted);
   border-radius: 16px;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  padding: 0.9rem 1.05rem 0.7rem;
+  transition: border-color 0.15s;
 }
 
 .composer__wrap:focus-within {
-  border-color: var(--amber-low);
-  box-shadow: 0 0 0 1px var(--amber-low), 0 0 20px rgba(0, 0, 0, 0.4);
+  border-color: rgba(212, 162, 76, 0.6);
 }
 
 .composer__input {
@@ -428,7 +757,7 @@ body::before {
   font-family: inherit;
   font-size: 15px;
   line-height: 1.5;
-  padding: 1rem 3.6rem 1rem 1.15rem;
+  padding: 0;
   resize: none;
   max-height: 220px;
   overflow-y: auto;
@@ -439,19 +768,28 @@ body::before {
   color: var(--text-faint);
 }
 
+/* Action row — bottom-right of the chunky wrap. margin-top: auto pushes it to
+   the bottom regardless of textarea height. Built as flex so future controls
+   (model selector, attach button) can slot in without restructuring. */
+.composer__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: auto;
+  padding-top: 0.4rem;
+}
+
 .composer__send {
-  position: absolute;
-  right: 0.55rem;
-  bottom: 0.55rem;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 10px;
+  border-radius: 9px;
   background: var(--amber);
-  color: #0a0a0b;
+  color: var(--bg);
   cursor: pointer;
   transition: background 0.15s, transform 0.05s;
 }
@@ -495,4 +833,45 @@ body::before {
 .composer__input::-webkit-scrollbar-thumb:hover,
 .markdown pre::-webkit-scrollbar-thumb:hover {
   background: #4a4a52;
+}
+
+/* Mobile: sidebar becomes an off-canvas drawer. No mini rail. */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 30;
+    width: 260px;
+    transform: translateX(-100%);
+    transition: transform 220ms ease;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+  }
+  .shell--sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+  /* Mini rail is desktop-only — on mobile the drawer is the only sidebar UI */
+  .sidebar__mini {
+    display: none;
+  }
+  /* The mobile drawer always shows the expanded layout, regardless of shell state */
+  .sidebar__expanded {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .shell__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 20;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 220ms ease;
+  }
+  .shell--sidebar-open .shell__backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }

@@ -34,6 +34,21 @@ import {
   getBestEpisodesSchema,
   type GetBestEpisodesInput,
 } from "./getBestEpisodes.js";
+import {
+  getCastAndCrew,
+  getCastAndCrewSchema,
+  type GetCastAndCrewInput,
+} from "./getCastAndCrew.js";
+import {
+  getTrailer,
+  getTrailerSchema,
+  type GetTrailerInput,
+} from "./getTrailer.js";
+import {
+  discoverTitles,
+  discoverTitlesSchema,
+  type DiscoverTitlesInput,
+} from "./discoverTitles.js";
 
 export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   searchTitleSchema,
@@ -43,6 +58,9 @@ export const TOOL_SCHEMAS: Anthropic.Tool[] = [
   getShowSeasonsSchema,
   getSeasonEpisodesSchema,
   getBestEpisodesSchema,
+  getCastAndCrewSchema,
+  getTrailerSchema,
+  discoverTitlesSchema,
 ];
 
 export async function dispatch(
@@ -66,6 +84,12 @@ export async function dispatch(
       return getSeasonEpisodes(input as unknown as GetSeasonEpisodesInput);
     case "get_best_episodes":
       return getBestEpisodes(input as unknown as GetBestEpisodesInput);
+    case "get_cast_and_crew":
+      return getCastAndCrew(input as unknown as GetCastAndCrewInput);
+    case "get_trailer":
+      return getTrailer(input as unknown as GetTrailerInput);
+    case "discover_titles":
+      return discoverTitles(input as unknown as DiscoverTitlesInput);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }

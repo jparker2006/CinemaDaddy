@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { tmdbGet } from "../clients/tmdb.js";
+import { tmdbGet, posterUrl } from "../clients/tmdb.js";
 
 const RESULT_LIMIT = 5;
 
@@ -37,6 +37,7 @@ export interface SearchHit {
   year: number | null;
   overview: string;
   popularity: number;
+  poster_url: string | null;
 }
 
 interface MovieItem {
@@ -45,6 +46,7 @@ interface MovieItem {
   release_date?: string;
   overview?: string;
   popularity?: number;
+  poster_path?: string | null;
 }
 
 interface TvItem {
@@ -53,6 +55,7 @@ interface TvItem {
   first_air_date?: string;
   overview?: string;
   popularity?: number;
+  poster_path?: string | null;
 }
 
 interface MultiItem {
@@ -64,6 +67,7 @@ interface MultiItem {
   first_air_date?: string;
   overview?: string;
   popularity?: number;
+  poster_path?: string | null;
 }
 
 interface SearchEnvelope<T> {
@@ -104,6 +108,7 @@ export async function searchTitle(
         year: parseYear(r.release_date),
         overview: r.overview ?? "",
         popularity: r.popularity ?? 0,
+        poster_url: posterUrl(r.poster_path),
       })),
     };
   }
@@ -122,6 +127,7 @@ export async function searchTitle(
         year: parseYear(r.first_air_date),
         overview: r.overview ?? "",
         popularity: r.popularity ?? 0,
+        poster_url: posterUrl(r.poster_path),
       })),
     };
   }
@@ -154,6 +160,7 @@ export async function searchTitle(
       ),
       overview: r.overview ?? "",
       popularity: r.popularity ?? 0,
+      poster_url: posterUrl(r.poster_path),
     })),
   };
 }

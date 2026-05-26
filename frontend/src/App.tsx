@@ -1,6 +1,97 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+function parseYouTubeKey(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      if (u.pathname.startsWith("/embed/")) {
+        return u.pathname.slice("/embed/".length) || null;
+      }
+      return u.searchParams.get("v");
+    }
+    if (host === "youtu.be") {
+      return u.pathname.replace(/^\//, "") || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+type HastImg = {
+  type?: string;
+  tagName?: string;
+  value?: string;
+  properties?: { src?: string };
+};
+
+function isTrailerHastNode(c: HastImg): boolean {
+  if (c.type !== "element" || c.tagName !== "img") return false;
+  const src = c.properties?.src;
+  return typeof src === "string" && parseYouTubeKey(src) !== null;
+}
+
+const MARKDOWN_COMPONENTS: Components = {
+  img: ({ src, alt }) => {
+    if (typeof src === "string") {
+      const key = parseYouTubeKey(src);
+      if (key) {
+        return (
+          <div className="trailer">
+            <iframe
+              className="trailer__iframe"
+              src={`https://www.youtube.com/embed/${key}`}
+              title={alt || "Trailer"}
+              loading="lazy"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
+        );
+      }
+    }
+    return (
+      <img
+        className="poster"
+        src={typeof src === "string" ? src : ""}
+        alt={alt ?? ""}
+        loading="lazy"
+      />
+    );
+  },
+  p: ({ children, node }) => {
+    // hast inspection: paragraphs containing only image elements (plus
+    // whitespace) get special handling — a single trailer image renders
+    // bare (the iframe needs to escape the <p>); multiple images become
+    // a flex grid; otherwise default <p>.
+    const kids: HastImg[] =
+      ((node as { children?: HastImg[] } | undefined)?.children ?? []);
+    const imgKids = kids.filter(
+      (c) => c.type === "element" && c.tagName === "img",
+    );
+    const onlyImagesOrWhitespace =
+      imgKids.length >= 1 &&
+      kids.every(
+        (c) =>
+          (c.type === "element" && c.tagName === "img") ||
+          (c.type === "text" && !(c.value ?? "").trim()),
+      );
+    if (onlyImagesOrWhitespace) {
+      const hasTrailer = imgKids.some(isTrailerHastNode);
+      if (hasTrailer && imgKids.length === 1) {
+        // Single trailer — render bare so the iframe div isn't nested in <p>.
+        return <>{children}</>;
+      }
+      if (imgKids.length >= 2) {
+        return <div className="poster-grid">{children}</div>;
+      }
+    }
+    return <p>{children}</p>;
+  },
+};
 
 type Role = "user" | "assistant" | "error";
 
@@ -18,6 +109,7 @@ interface Message {
   text?: string;
   parts?: AssistantPart[];
   streaming?: boolean;
+  chips?: string[];
 }
 
 interface ServerEvent {
@@ -28,10 +120,19 @@ interface ServerEvent {
   input?: Record<string, unknown>;
   sessionId?: string;
   message?: string;
+  chips?: string[];
 }
 
 const SESSION_KEY = "cinema-daddy-session";
+const SIDEBAR_KEY = "cinema-daddy-sidebar-open";
 const MAX_TEXTAREA_HEIGHT = 220;
+
+const MOOD_SUGGESTIONS = [
+  "Something cozy under 90 minutes on Netflix",
+  "Best sci-fi I haven't heard of",
+  "A thriller from the last 5 years",
+  "Funny movie for tonight, under 2 hours",
+];
 
 function getSessionId() {
   return localStorage.getItem(SESSION_KEY);
@@ -43,6 +144,75 @@ function setSessionId(id: string) {
 
 function clearSessionId() {
   localStorage.removeItem(SESSION_KEY);
+}
+
+function getInitialSidebarOpen(): boolean {
+  // Mobile always starts with the drawer closed regardless of persisted desktop preference
+  if (window.matchMedia("(max-width: 768px)").matches) return false;
+  const stored = localStorage.getItem(SIDEBAR_KEY);
+  return stored === null ? true : stored === "true";
+}
+
+function PanelIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect
+        x="3"
+        y="5"
+        width="18"
+        height="14"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <line
+        x1="9.5"
+        y1="5"
+        x2="9.5"
+        y2="19"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+    </svg>
+  );
+}
+
+function PlusCircleIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
+      <line
+        x1="12"
+        y1="8"
+        x2="12"
+        y2="16"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <line
+        x1="8"
+        y1="12"
+        x2="16"
+        y2="12"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }
 
 function friendlyToolPhrase(
@@ -70,6 +240,12 @@ function friendlyToolPhrase(
     }
     case "get_best_episodes":
       return "Finding the best episodes…";
+    case "get_cast_and_crew":
+      return "Looking up cast & crew…";
+    case "get_trailer":
+      return "Finding the trailer…";
+    case "discover_titles":
+      return "Browsing the catalog…";
     default:
       return `Running ${name}…`;
   }
@@ -79,6 +255,7 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(getInitialSidebarOpen);
   const messagesRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -93,6 +270,13 @@ export default function App() {
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, MAX_TEXTAREA_HEIGHT) + "px";
   }, [input]);
+
+  useEffect(() => {
+    // Persist sidebar state on desktop only; mobile drawer always starts closed each session
+    if (window.matchMedia("(min-width: 769px)").matches) {
+      localStorage.setItem(SIDEBAR_KEY, String(sidebarOpen));
+    }
+  }, [sidebarOpen]);
 
   function replaceLastAssistantWithError(msg: string) {
     setMessages((m) => {
@@ -149,16 +333,26 @@ export default function App() {
       });
       return;
     }
+    if (ev.type === "followups" && Array.isArray(ev.chips)) {
+      const chips = ev.chips
+        .filter((c): c is string => typeof c === "string")
+        .slice(0, 4);
+      setMessages((m) => {
+        const last = m[m.length - 1];
+        if (!last || last.role !== "assistant") return m;
+        return [...m.slice(0, -1), { ...last, chips }];
+      });
+      return;
+    }
     if (ev.type === "error" && typeof ev.message === "string") {
       replaceLastAssistantWithError(ev.message);
       return;
     }
   }
 
-  async function send() {
-    const trimmed = input.trim();
+  async function sendDirect(text: string) {
+    const trimmed = text.trim();
     if (!trimmed || busy) return;
-    setInput("");
     setBusy(true);
     setMessages((m) => [
       ...m,
@@ -221,6 +415,13 @@ export default function App() {
     }
   }
 
+  async function send() {
+    const trimmed = input.trim();
+    if (!trimmed || busy) return;
+    setInput("");
+    await sendDirect(trimmed);
+  }
+
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -246,22 +447,86 @@ export default function App() {
     textareaRef.current?.focus();
   }
 
-  return (
-    <div className="app">
-      <header className="header">
-        <h1 className="brand">CinemaDaddy</h1>
-        <button className="reset-btn" onClick={handleReset} type="button">
-          Reset
-        </button>
-      </header>
+  function handleNewChat() {
+    // On mobile only: close the drawer so the user sees the fresh empty state
+    if (window.matchMedia("(max-width: 768px)").matches) {
+      setSidebarOpen(false);
+    }
+    void handleReset();
+  }
 
-      <main className="messages" ref={messagesRef}>
-        {messages.length === 0 && (
-          <div className="welcome">
-            <p>Ask about a movie or show — streaming, ratings, episodes, best of.</p>
+  const isEmpty = messages.length === 0;
+
+  return (
+    <div className={`shell shell--sidebar-${sidebarOpen ? "open" : "closed"}`}>
+      <aside className="sidebar" aria-label="Chat history">
+        <div className="sidebar__expanded">
+          <div className="sidebar__top">
+            <h1 className="sidebar__brand">CinemaDaddy</h1>
+            <button
+              className="sidebar__close"
+              onClick={() => setSidebarOpen(false)}
+              type="button"
+              aria-label="Collapse sidebar"
+            >
+              <PanelIcon />
+            </button>
           </div>
+          <button
+            className="new-chat"
+            onClick={handleNewChat}
+            type="button"
+          >
+            <span className="new-chat__plus" aria-hidden="true">+</span>
+            New Chat
+          </button>
+          <div className="sidebar__label">Recent</div>
+          <div className="sidebar__history" aria-hidden="true" />
+        </div>
+        <div className="sidebar__mini" aria-hidden={sidebarOpen}>
+          <button
+            className="mini-btn"
+            onClick={() => setSidebarOpen(true)}
+            type="button"
+            aria-label="Expand sidebar"
+            tabIndex={sidebarOpen ? -1 : 0}
+          >
+            <PanelIcon />
+          </button>
+          <button
+            className="mini-btn"
+            onClick={handleNewChat}
+            type="button"
+            aria-label="New chat"
+            tabIndex={sidebarOpen ? -1 : 0}
+          >
+            <PlusCircleIcon />
+          </button>
+        </div>
+      </aside>
+      <div
+        className="shell__backdrop"
+        onClick={() => setSidebarOpen(false)}
+        aria-hidden="true"
+      />
+      <div className={`app${isEmpty ? " app--empty" : ""}`}>
+        <button
+          className="sidebar-trigger"
+          onClick={() => setSidebarOpen(true)}
+          type="button"
+          aria-label="Open sidebar"
+          aria-expanded={sidebarOpen}
+        >
+          <PanelIcon />
+        </button>
+
+        <div className="app__inner">
+        <main className="messages" ref={messagesRef}>
+        {messages.length === 0 && (
+          <h2 className="greeting">What are we watching?</h2>
         )}
         {messages.map((m, i) => {
+          const isLast = i === messages.length - 1;
           if (m.role === "assistant") {
             const parts = m.parts ?? [];
             const lastIdx = parts.length - 1;
@@ -285,7 +550,10 @@ export default function App() {
                           : "")
                       }
                     >
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={MARKDOWN_COMPONENTS}
+                      >
                         {part.text}
                       </ReactMarkdown>
                     </div>
@@ -301,6 +569,20 @@ export default function App() {
                 {m.streaming && parts.length > 0 && !lastIsText && (
                   <div className="cursor-only">
                     <span className="cursor" aria-label="Streaming" />
+                  </div>
+                )}
+                {isLast && !m.streaming && m.chips && m.chips.length > 0 && (
+                  <div className="chips">
+                    {m.chips.map((c, k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        className="chip"
+                        onClick={() => void sendDirect(c)}
+                      >
+                        {c}
+                      </button>
+                    ))}
                   </div>
                 )}
               </article>
@@ -331,25 +613,43 @@ export default function App() {
             rows={1}
             autoFocus
           />
-          <button
-            className="composer__send"
-            onClick={() => void send()}
-            disabled={!input.trim() || busy}
-            aria-label="Send message"
-            type="button"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path
-                d="M12 19V5M12 5L5 12M12 5L19 12"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
+          <div className="composer__actions">
+            <button
+              className="composer__send"
+              onClick={() => void send()}
+              disabled={!input.trim() || busy}
+              aria-label="Send message"
+              type="button"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M12 19V5M12 5L5 12M12 5L19 12"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
       </footer>
+      {isEmpty && (
+        <div className="mood-suggestions">
+          {MOOD_SUGGESTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className="mood-chip"
+              onClick={() => void sendDirect(s)}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+      </div>
+      </div>
     </div>
   );
 }

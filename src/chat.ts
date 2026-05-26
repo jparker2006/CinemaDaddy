@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { MODEL } from "./anthropic.js";
+import { MODEL, HAIKU_MODEL } from "./anthropic.js";
 import { SYSTEM_PROMPT } from "./systemPrompt.js";
 import { TOOL_SCHEMAS, dispatch } from "./tools/registry.js";
 
@@ -10,7 +10,111 @@ export type ChatEvent =
       id: string;
       name: string;
       input: Record<string, unknown>;
-    };
+    }
+  | { type: "followups"; chips: string[] };
+
+const FOLLOWUP_PROMPT = `You are generating follow-up question suggestions for a movie/TV chatbot called CinemaDaddy. The user has just received a response. Suggest 3 brief follow-up questions they might naturally want to ask next.
+
+Each suggestion should:
+- Be specific to the movie or TV show currently being discussed
+- Cover a different angle than what was already answered
+- Sound like how a person would actually ask (casual, 4-10 words)
+- Be answerable by the assistant's available tools (streaming providers, IMDB rating, seasons, episodes, best-of, cast & crew, details)
+
+Return ONLY a JSON array of strings. No surrounding text, no markdown fences, no explanation.
+
+Example output:
+["Where can I stream it?", "Top episodes of season 1?", "Who's in the cast?"]`;
+
+const FOLLOWUP_TURN_LIMIT = 6;
+
+type LooseBlock = { type: string; text?: string };
+
+function conversationToText(
+  convo: Anthropic.MessageParam[],
+): Anthropic.MessageParam[] {
+  const out: Anthropic.MessageParam[] = [];
+  let pendingAssistant = "";
+  const flushAssistant = () => {
+    if (pendingAssistant) {
+      out.push({ role: "assistant", content: pendingAssistant });
+      pendingAssistant = "";
+    }
+  };
+  for (const msg of convo) {
+    if (msg.role === "user") {
+      if (typeof msg.content === "string") {
+        flushAssistant();
+        out.push({ role: "user", content: msg.content });
+      }
+      // Array content on user messages = tool_result blocks; skip.
+    } else {
+      const text =
+        typeof msg.content === "string"
+          ? msg.content
+          : (msg.content as LooseBlock[])
+              .filter((b) => b.type === "text")
+              .map((b) => b.text ?? "")
+              .join("");
+      pendingAssistant += text;
+    }
+  }
+  flushAssistant();
+  return out.slice(-FOLLOWUP_TURN_LIMIT);
+}
+
+function parseChips(raw: string): string[] {
+  let candidate = raw.trim();
+  candidate = candidate
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "");
+  const tryParse = (s: string): string[] | null => {
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter(
+            (p): p is string => typeof p === "string" && p.trim().length > 0,
+          )
+          .slice(0, 4);
+      }
+    } catch {
+      // fall through
+    }
+    return null;
+  };
+  const direct = tryParse(candidate);
+  if (direct) return direct;
+  const match = candidate.match(/\[[\s\S]*?\]/);
+  if (match) {
+    const fromMatch = tryParse(match[0]);
+    if (fromMatch) return fromMatch;
+  }
+  return [];
+}
+
+async function generateFollowups(
+  client: Anthropic,
+  conversation: Anthropic.MessageParam[],
+): Promise<string[]> {
+  try {
+    const messages = conversationToText(conversation);
+    if (messages.length === 0) return [];
+    const response = await client.messages.create({
+      model: HAIKU_MODEL,
+      max_tokens: 200,
+      system: FOLLOWUP_PROMPT,
+      messages,
+    });
+    const text = (response.content as LooseBlock[])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text ?? "")
+      .join("");
+    return parseChips(text);
+  } catch {
+    return [];
+  }
+}
 
 export async function runTurn(
   client: Anthropic,
@@ -83,4 +187,7 @@ export async function runTurn(
 
     conversation.push({ role: "user", content: toolResults });
   }
+
+  const chips = await generateFollowups(client, conversation);
+  emit({ type: "followups", chips });
 }

@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { tmdbGet } from "../clients/tmdb.js";
+import { tmdbGet, posterUrl } from "../clients/tmdb.js";
 
 export const getDetailsSchema: Anthropic.Tool = {
   name: "get_details",
@@ -33,6 +33,7 @@ interface MovieDetails {
   genres?: Array<{ id: number; name: string }>;
   status?: string;
   vote_average?: number;
+  poster_path?: string | null;
   external_ids?: { imdb_id?: string | null };
 }
 
@@ -47,6 +48,7 @@ interface TvDetails {
   number_of_episodes?: number;
   genres?: Array<{ id: number; name: string }>;
   vote_average?: number;
+  poster_path?: string | null;
   last_episode_to_air?: EpisodeSummary | null;
   next_episode_to_air?: EpisodeSummary | null;
   external_ids?: { imdb_id?: string | null };
@@ -62,6 +64,7 @@ interface DetailsOutput {
   genres: string[];
   status: string | null;
   vote_average: number | null;
+  poster_url: string | null;
   runtime_minutes?: number | null;
   number_of_seasons?: number;
   number_of_episodes?: number;
@@ -113,6 +116,7 @@ export async function getDetails(
       genres: (d.genres ?? []).map((g) => g.name),
       status: d.status ?? null,
       vote_average: d.vote_average ?? null,
+      poster_url: posterUrl(d.poster_path),
       runtime_minutes: d.runtime ?? null,
     };
   }
@@ -129,6 +133,7 @@ export async function getDetails(
     genres: (d.genres ?? []).map((g) => g.name),
     status: d.status ?? null,
     vote_average: d.vote_average ?? null,
+    poster_url: posterUrl(d.poster_path),
     number_of_seasons: d.number_of_seasons,
     number_of_episodes: d.number_of_episodes,
     first_air_date: d.first_air_date ?? null,
