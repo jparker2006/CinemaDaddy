@@ -10,6 +10,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuth } from "../lib/auth";
 import ConversationList from "../components/ConversationList";
+import CurtainsIntro from "../components/CurtainsIntro";
 import UserMenu from "../components/UserMenu";
 import {
   createConversation,
@@ -648,6 +649,7 @@ export default function Chat() {
 
   return (
     <div className={`shell shell--sidebar-${sidebarOpen ? "open" : "closed"}`}>
+      <CurtainsIntro />
       <aside className="sidebar" aria-label="Chat history">
         <div className="sidebar__expanded">
           <div className="sidebar__top">
