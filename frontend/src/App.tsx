@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -63,10 +69,6 @@ const MARKDOWN_COMPONENTS: Components = {
     );
   },
   p: ({ children, node }) => {
-    // hast inspection: paragraphs containing only image elements (plus
-    // whitespace) get special handling — a single trailer image renders
-    // bare (the iframe needs to escape the <p>); multiple images become
-    // a flex grid; otherwise default <p>.
     const kids: HastImg[] =
       ((node as { children?: HastImg[] } | undefined)?.children ?? []);
     const imgKids = kids.filter(
@@ -82,7 +84,6 @@ const MARKDOWN_COMPONENTS: Components = {
     if (onlyImagesOrWhitespace) {
       const hasTrailer = imgKids.some(isTrailerHastNode);
       if (hasTrailer && imgKids.length === 1) {
-        // Single trailer — render bare so the iframe div isn't nested in <p>.
         return <>{children}</>;
       }
       if (imgKids.length >= 2) {
@@ -93,7 +94,22 @@ const MARKDOWN_COMPONENTS: Components = {
   },
 };
 
-type Role = "user" | "assistant" | "error";
+// Loose mirror of @anthropic-ai/sdk's MessageParam shape. The client only
+// needs to read text/tool_use blocks for rendering; tool_result blocks pass
+// through opaquely as part of the persisted history.
+type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
+  | {
+      type: "tool_result";
+      tool_use_id: string;
+      content: string;
+      is_error?: boolean;
+    };
+
+type MessageParam =
+  | { role: "user"; content: string | ContentBlock[] }
+  | { role: "assistant"; content: string | ContentBlock[] };
 
 type AssistantPart =
   | { type: "text"; text: string }
@@ -104,13 +120,12 @@ type AssistantPart =
       input: Record<string, unknown>;
     };
 
-interface Message {
-  role: Role;
-  text?: string;
-  parts?: AssistantPart[];
-  streaming?: boolean;
-  chips?: string[];
-}
+type DisplayItem =
+  | { kind: "user"; text: string }
+  | { kind: "assistant"; parts: AssistantPart[]; streaming?: boolean }
+  | { kind: "error"; text: string };
+
+type StreamingTurn = { userText: string; parts: AssistantPart[] };
 
 interface ServerEvent {
   type: string;
@@ -118,14 +133,15 @@ interface ServerEvent {
   id?: string;
   name?: string;
   input?: Record<string, unknown>;
-  sessionId?: string;
   message?: string;
   chips?: string[];
+  conversation?: MessageParam[];
 }
 
-const SESSION_KEY = "cinema-daddy-session";
+const CONVERSATION_KEY = "cinema-daddy-conversation";
 const SIDEBAR_KEY = "cinema-daddy-sidebar-open";
 const MAX_TEXTAREA_HEIGHT = 220;
+const MAX_BYTES = 4 * 1024 * 1024;
 
 const MOOD_SUGGESTIONS = [
   "Something cozy under 90 minutes on Netflix",
@@ -134,23 +150,83 @@ const MOOD_SUGGESTIONS = [
   "Funny movie for tonight, under 2 hours",
 ];
 
-function getSessionId() {
-  return localStorage.getItem(SESSION_KEY);
+function trimConversation(conv: MessageParam[]): MessageParam[] {
+  let out = conv;
+  while (out.length > 4 && JSON.stringify(out).length > MAX_BYTES) {
+    out = out.slice(2);
+  }
+  return out;
 }
 
-function setSessionId(id: string) {
-  localStorage.setItem(SESSION_KEY, id);
+function persistConversation(conv: MessageParam[]) {
+  try {
+    localStorage.setItem(CONVERSATION_KEY, JSON.stringify(trimConversation(conv)));
+  } catch {
+    try {
+      localStorage.setItem(CONVERSATION_KEY, JSON.stringify(conv.slice(-10)));
+    } catch {
+      localStorage.removeItem(CONVERSATION_KEY);
+    }
+  }
 }
 
-function clearSessionId() {
-  localStorage.removeItem(SESSION_KEY);
+function getInitialConversation(): MessageParam[] {
+  try {
+    const raw = localStorage.getItem(CONVERSATION_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as MessageParam[]) : [];
+  } catch {
+    return [];
+  }
 }
 
 function getInitialSidebarOpen(): boolean {
-  // Mobile always starts with the drawer closed regardless of persisted desktop preference
   if (window.matchMedia("(max-width: 768px)").matches) return false;
   const stored = localStorage.getItem(SIDEBAR_KEY);
   return stored === null ? true : stored === "true";
+}
+
+function deriveDisplay(
+  conversation: MessageParam[],
+  streamingTurn: StreamingTurn | null,
+  errorMessage: string | null,
+): DisplayItem[] {
+  const items: DisplayItem[] = [];
+  for (const msg of conversation) {
+    if (msg.role === "user") {
+      if (typeof msg.content === "string") {
+        items.push({ kind: "user", text: msg.content });
+      }
+      // user-role messages whose content is an array are tool_result blocks
+      // (internal plumbing) — skip
+    } else if (msg.role === "assistant") {
+      const blocks = Array.isArray(msg.content) ? msg.content : [];
+      const parts: AssistantPart[] = [];
+      for (const block of blocks) {
+        if (block.type === "text") {
+          parts.push({ type: "text", text: block.text });
+        } else if (block.type === "tool_use") {
+          parts.push({
+            type: "tool",
+            id: block.id,
+            name: block.name,
+            input: block.input,
+          });
+        }
+        // tool_result is user-role only; assistant blocks include text + tool_use
+      }
+      if (parts.length > 0) items.push({ kind: "assistant", parts });
+    }
+  }
+  if (streamingTurn) {
+    items.push({ kind: "user", text: streamingTurn.userText });
+    items.push({ kind: "assistant", parts: streamingTurn.parts, streaming: true });
+  }
+  if (errorMessage) {
+    items.push({ kind: "error", text: errorMessage });
+  }
+  return items;
 }
 
 function PanelIcon() {
@@ -252,17 +328,25 @@ function friendlyToolPhrase(
 }
 
 export default function App() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversation, setConversation] = useState<MessageParam[]>(getInitialConversation);
+  const [streamingTurn, setStreamingTurn] = useState<StreamingTurn | null>(null);
+  const [latestChips, setLatestChips] = useState<string[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(getInitialSidebarOpen);
   const messagesRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const displayed = useMemo(
+    () => deriveDisplay(conversation, streamingTurn, errorMessage),
+    [conversation, streamingTurn, errorMessage],
+  );
+
   useEffect(() => {
     const el = messagesRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [displayed.length, streamingTurn]);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -272,33 +356,17 @@ export default function App() {
   }, [input]);
 
   useEffect(() => {
-    // Persist sidebar state on desktop only; mobile drawer always starts closed each session
     if (window.matchMedia("(min-width: 769px)").matches) {
       localStorage.setItem(SIDEBAR_KEY, String(sidebarOpen));
     }
   }, [sidebarOpen]);
 
-  function replaceLastAssistantWithError(msg: string) {
-    setMessages((m) => {
-      const last = m[m.length - 1];
-      if (last && last.role === "assistant") {
-        return [...m.slice(0, -1), { role: "error", text: msg }];
-      }
-      return [...m, { role: "error", text: msg }];
-    });
-  }
-
   function handleStreamEvent(ev: ServerEvent) {
-    if (ev.type === "session" && ev.sessionId) {
-      setSessionId(ev.sessionId);
-      return;
-    }
     if (ev.type === "text_delta" && typeof ev.text === "string") {
       const delta = ev.text;
-      setMessages((m) => {
-        const last = m[m.length - 1];
-        if (!last || last.role !== "assistant" || !last.parts) return m;
-        const parts = [...last.parts];
+      setStreamingTurn((t) => {
+        if (!t) return t;
+        const parts = [...t.parts];
         const lastPart = parts[parts.length - 1];
         if (lastPart && lastPart.type === "text") {
           parts[parts.length - 1] = {
@@ -308,7 +376,7 @@ export default function App() {
         } else {
           parts.push({ type: "text", text: delta });
         }
-        return [...m.slice(0, -1), { ...last, parts }];
+        return { ...t, parts };
       });
       return;
     }
@@ -323,29 +391,26 @@ export default function App() {
         name: ev.name,
         input: ev.input ?? {},
       };
-      setMessages((m) => {
-        const last = m[m.length - 1];
-        if (!last || last.role !== "assistant" || !last.parts) return m;
-        return [
-          ...m.slice(0, -1),
-          { ...last, parts: [...last.parts, tool] },
-        ];
-      });
+      setStreamingTurn((t) => (t ? { ...t, parts: [...t.parts, tool] } : t));
       return;
     }
     if (ev.type === "followups" && Array.isArray(ev.chips)) {
       const chips = ev.chips
         .filter((c): c is string => typeof c === "string")
         .slice(0, 4);
-      setMessages((m) => {
-        const last = m[m.length - 1];
-        if (!last || last.role !== "assistant") return m;
-        return [...m.slice(0, -1), { ...last, chips }];
-      });
+      setLatestChips(chips);
+      return;
+    }
+    if (ev.type === "done" && Array.isArray(ev.conversation)) {
+      const newConv = ev.conversation as MessageParam[];
+      setConversation(newConv);
+      setStreamingTurn(null);
+      persistConversation(newConv);
       return;
     }
     if (ev.type === "error" && typeof ev.message === "string") {
-      replaceLastAssistantWithError(ev.message);
+      setErrorMessage(ev.message);
+      setStreamingTurn(null);
       return;
     }
   }
@@ -354,17 +419,15 @@ export default function App() {
     const trimmed = text.trim();
     if (!trimmed || busy) return;
     setBusy(true);
-    setMessages((m) => [
-      ...m,
-      { role: "user", text: trimmed },
-      { role: "assistant", parts: [], streaming: true },
-    ]);
+    setLatestChips([]);
+    setErrorMessage(null);
+    setStreamingTurn({ userText: trimmed, parts: [] });
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: getSessionId(), message: trimmed }),
+        body: JSON.stringify({ message: trimmed, conversation }),
       });
 
       if (!res.ok || !res.body) {
@@ -375,7 +438,8 @@ export default function App() {
         } catch {
           /* ignore */
         }
-        replaceLastAssistantWithError(errMsg);
+        setErrorMessage(errMsg);
+        setStreamingTurn(null);
         return;
       }
 
@@ -399,18 +463,10 @@ export default function App() {
         }
       }
     } catch (err) {
-      replaceLastAssistantWithError(
-        err instanceof Error ? err.message : String(err),
-      );
+      setErrorMessage(err instanceof Error ? err.message : String(err));
+      setStreamingTurn(null);
     } finally {
       setBusy(false);
-      setMessages((m) =>
-        m.map((msg, i) =>
-          i === m.length - 1 && msg.role === "assistant"
-            ? { ...msg, streaming: false }
-            : msg,
-        ),
-      );
       textareaRef.current?.focus();
     }
   }
@@ -429,33 +485,24 @@ export default function App() {
     }
   }
 
-  async function handleReset() {
-    const id = getSessionId();
-    if (id) {
-      try {
-        await fetch("/api/reset", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: id }),
-        });
-      } catch {
-        // best-effort; the local clear below is what matters
-      }
-    }
-    clearSessionId();
-    setMessages([]);
+  function handleReset() {
+    setConversation([]);
+    setStreamingTurn(null);
+    setLatestChips([]);
+    setErrorMessage(null);
+    localStorage.removeItem(CONVERSATION_KEY);
     textareaRef.current?.focus();
   }
 
   function handleNewChat() {
-    // On mobile only: close the drawer so the user sees the fresh empty state
     if (window.matchMedia("(max-width: 768px)").matches) {
       setSidebarOpen(false);
     }
-    void handleReset();
+    handleReset();
   }
 
-  const isEmpty = messages.length === 0;
+  const isEmpty =
+    conversation.length === 0 && !streamingTurn && !errorMessage;
 
   return (
     <div className={`shell shell--sidebar-${sidebarOpen ? "open" : "closed"}`}>
@@ -521,134 +568,148 @@ export default function App() {
         </button>
 
         <div className="app__inner">
-        <main className="messages" ref={messagesRef}>
-        {messages.length === 0 && (
-          <h2 className="greeting">What are we watching?</h2>
-        )}
-        {messages.map((m, i) => {
-          const isLast = i === messages.length - 1;
-          if (m.role === "assistant") {
-            const parts = m.parts ?? [];
-            const lastIdx = parts.length - 1;
-            const lastIsText = lastIdx >= 0 && parts[lastIdx]!.type === "text";
-            return (
-              <article key={i} className="message message--assistant">
-                <div className="label label--assistant">CinemaDaddy</div>
-                {parts.length === 0 && m.streaming && (
-                  <div className="cursor-only">
-                    <span className="cursor" aria-label="Streaming" />
-                  </div>
-                )}
-                {parts.map((part, j) =>
-                  part.type === "text" ? (
-                    <div
-                      key={j}
-                      className={
-                        "markdown" +
-                        (m.streaming && j === lastIdx
-                          ? " markdown--streaming"
-                          : "")
-                      }
-                    >
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={MARKDOWN_COMPONENTS}
-                      >
-                        {part.text}
-                      </ReactMarkdown>
-                    </div>
-                  ) : (
-                    <div key={j} className="tool-status">
-                      <span className="tool-status__arrow">→</span>
-                      <span className="tool-status__phrase">
-                        {friendlyToolPhrase(part.name, part.input)}
-                      </span>
-                    </div>
-                  ),
-                )}
-                {m.streaming && parts.length > 0 && !lastIsText && (
-                  <div className="cursor-only">
-                    <span className="cursor" aria-label="Streaming" />
-                  </div>
-                )}
-                {isLast && !m.streaming && m.chips && m.chips.length > 0 && (
-                  <div className="chips">
-                    {m.chips.map((c, k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        className="chip"
-                        onClick={() => void sendDirect(c)}
-                      >
-                        {c}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </article>
-            );
-          }
-          return (
-            <article key={i} className={`message message--${m.role}`}>
-              {m.role === "user" && <div className="label label--user">You</div>}
-              {m.role === "error" && (
-                <div className="label label--error">Error</div>
-              )}
-              <div className="text">{m.text}</div>
-            </article>
-          );
-        })}
-      </main>
+          <main className="messages" ref={messagesRef}>
+            {isEmpty && (
+              <h2 className="greeting">What are we watching?</h2>
+            )}
+            {displayed.map((item, i) => {
+              const isLast = i === displayed.length - 1;
+              if (item.kind === "assistant") {
+                const parts = item.parts;
+                const lastIdx = parts.length - 1;
+                const lastIsText =
+                  lastIdx >= 0 && parts[lastIdx]!.type === "text";
+                return (
+                  <article key={i} className="message message--assistant">
+                    <div className="label label--assistant">CinemaDaddy</div>
+                    {parts.length === 0 && item.streaming && (
+                      <div className="cursor-only">
+                        <span className="cursor" aria-label="Streaming" />
+                      </div>
+                    )}
+                    {parts.map((part, j) =>
+                      part.type === "text" ? (
+                        <div
+                          key={j}
+                          className={
+                            "markdown" +
+                            (item.streaming && j === lastIdx
+                              ? " markdown--streaming"
+                              : "")
+                          }
+                        >
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={MARKDOWN_COMPONENTS}
+                          >
+                            {part.text}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <div key={j} className="tool-status">
+                          <span className="tool-status__arrow">→</span>
+                          <span className="tool-status__phrase">
+                            {friendlyToolPhrase(part.name, part.input)}
+                          </span>
+                        </div>
+                      ),
+                    )}
+                    {item.streaming && parts.length > 0 && !lastIsText && (
+                      <div className="cursor-only">
+                        <span className="cursor" aria-label="Streaming" />
+                      </div>
+                    )}
+                    {isLast &&
+                      !item.streaming &&
+                      latestChips.length > 0 && (
+                        <div className="chips">
+                          {latestChips.map((c, k) => (
+                            <button
+                              key={k}
+                              type="button"
+                              className="chip"
+                              onClick={() => void sendDirect(c)}
+                            >
+                              {c}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                  </article>
+                );
+              }
+              if (item.kind === "user") {
+                return (
+                  <article key={i} className="message message--user">
+                    <div className="label label--user">You</div>
+                    <div className="text">{item.text}</div>
+                  </article>
+                );
+              }
+              return (
+                <article key={i} className="message message--error">
+                  <div className="label label--error">Error</div>
+                  <div className="text">{item.text}</div>
+                </article>
+              );
+            })}
+          </main>
 
-      <footer className="composer">
-        <div className="composer__wrap">
-          <textarea
-            ref={textareaRef}
-            className="composer__input"
-            placeholder="Ask about a movie or show…"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={busy}
-            rows={1}
-            autoFocus
-          />
-          <div className="composer__actions">
-            <button
-              className="composer__send"
-              onClick={() => void send()}
-              disabled={!input.trim() || busy}
-              aria-label="Send message"
-              type="button"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path
-                  d="M12 19V5M12 5L5 12M12 5L19 12"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          </div>
+          <footer className="composer">
+            <div className="composer__wrap">
+              <textarea
+                ref={textareaRef}
+                className="composer__input"
+                placeholder="Ask about a movie or show…"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={busy}
+                rows={1}
+                autoFocus
+              />
+              <div className="composer__actions">
+                <button
+                  className="composer__send"
+                  onClick={() => void send()}
+                  disabled={!input.trim() || busy}
+                  aria-label="Send message"
+                  type="button"
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M12 19V5M12 5L5 12M12 5L19 12"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </footer>
+          {isEmpty && (
+            <div className="mood-suggestions">
+              {MOOD_SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className="mood-chip"
+                  onClick={() => void sendDirect(s)}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      </footer>
-      {isEmpty && (
-        <div className="mood-suggestions">
-          {MOOD_SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className="mood-chip"
-              onClick={() => void sendDirect(s)}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-      </div>
       </div>
     </div>
   );

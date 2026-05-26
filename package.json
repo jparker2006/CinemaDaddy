@@ -1,14 +1,12 @@
 {
   "name": "cinema-daddy",
   "version": "0.1.0",
-  "description": "CLI movie/TV chatbot using Anthropic tool-use with TMDB and OMDb.",
+  "description": "Movie/TV chatbot using Anthropic tool-use with TMDB and OMDb. Deployed on Vercel.",
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "npm run build && tsx src/index.ts",
     "build": "vite build",
-    "dev": "tsx watch src/index.ts",
-    "dev:frontend": "vite",
+    "dev": "vercel dev",
     "typecheck": "tsc --noEmit && tsc --noEmit -p frontend"
   },
   "engines": {
@@ -16,20 +14,16 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
-    "tsx": "^4.22.3",
     "typescript": "^6.0.3",
     "vite": "^8.0.14"
   }
