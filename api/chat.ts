@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { runTurn, type ChatEvent } from "../src/chat.js";
+import { runTurn, generateTitle, type ChatEvent } from "../src/chat.js";
 import { anthropic } from "../src/anthropic.js";
 
 export const config = { maxDuration: 60 };
@@ -59,12 +59,21 @@ export async function POST(req: Request): Promise<Response> {
       };
       // fire-and-forget: the controller stays open across this async work,
       // events stream out as they're produced
+      // Captured before runTurn mutates `conversation` — used below to
+      // decide whether we should also generate a Haiku-powered title.
+      const isFirstTurn = conversation.length === 0;
+
       void (async () => {
         try {
           await runTurn(anthropic, conversation, message, (e: ChatEvent) =>
             write(e),
           );
-          write({ type: "done", conversation });
+          let title: string | undefined;
+          if (isFirstTurn) {
+            const generated = await generateTitle(anthropic, conversation);
+            title = generated ?? undefined;
+          }
+          write({ type: "done", conversation, title });
         } catch (err) {
           console.error("/api/chat error:", err);
           write({

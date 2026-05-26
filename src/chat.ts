@@ -93,6 +93,48 @@ function parseChips(raw: string): string[] {
   return [];
 }
 
+const TITLE_PROMPT = `Generate a very short title (3-5 words) for this CinemaDaddy chat. The title should name the specific movie or show the conversation is about, plus the subject (rating, cast, where to stream, etc.) when relevant.
+
+Rules:
+- Return ONLY the title text, nothing else
+- 3 to 5 words
+- No quotes, no trailing punctuation
+- Title Case
+- Be specific: "Severance Season 2 Rating", "Cast of The Bear", "Sci-fi Recommendations"
+- Never generic ("TV Show Question", "Movie Chat")`;
+
+export async function generateTitle(
+  client: Anthropic,
+  conversation: Anthropic.MessageParam[],
+): Promise<string | null> {
+  try {
+    const messages = conversationToText(conversation);
+    if (messages.length === 0) return null;
+    const response = await client.messages.create({
+      model: HAIKU_MODEL,
+      max_tokens: 30,
+      system: TITLE_PROMPT,
+      messages,
+    });
+    const text = (response.content as LooseBlock[])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text ?? "")
+      .join("");
+    // Strip any wrapping quotes Haiku might add despite the instructions,
+    // trim, and cap length defensively in case it ignored the word limit.
+    const cleaned = text
+      .trim()
+      .replace(/^["'`]+/, "")
+      .replace(/["'`]+$/, "")
+      .replace(/[.!?]+$/, "")
+      .trim();
+    if (!cleaned) return null;
+    return cleaned.length > 60 ? cleaned.slice(0, 60).trimEnd() + "…" : cleaned;
+  } catch {
+    return null;
+  }
+}
+
 async function generateFollowups(
   client: Anthropic,
   conversation: Anthropic.MessageParam[],

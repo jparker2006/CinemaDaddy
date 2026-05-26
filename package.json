@@ -6,7 +6,8 @@
   "private": true,
   "scripts": {
     "build": "vite build",
-    "dev": "vercel dev",
+    "dev": "vite",
+    "start": "PORT=3100 vercel dev",
     "typecheck": "tsc --noEmit && tsc --noEmit -p frontend"
   },
   "engines": {
@@ -14,10 +15,13 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
+    "@supabase/supabase-js": "^2.106.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "react-router-dom": "^7.15.1",
+    "remark-gfm": "^4.0.1",
+    "tslib": "^2.8.1"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

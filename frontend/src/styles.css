@@ -233,7 +233,260 @@ body::before {
 .sidebar__history {
   flex: 1;
   min-height: 0;
-  /* placeholder — will hold history items once memory lands */
+  overflow-y: auto;
+  /* Negative margin + matching padding gives the scrollbar room to sit at
+     the sidebar edge without nudging item text inward. */
+  margin: 0 -0.3rem;
+  padding: 0 0.3rem;
+}
+
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.conversation-list__section-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin: 1.1rem 0 0.4rem;
+  padding: 0 0.3rem;
+}
+.conversation-list__section-label:first-child {
+  margin-top: 1.3rem;
+}
+
+.conversation-list__group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.conversation-list__row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.conversation-list__item {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  line-height: 1.3;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: background 140ms ease, color 140ms ease;
+  cursor: pointer;
+}
+.conversation-list__item:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+.conversation-list__item--active {
+  color: var(--amber);
+  background: var(--amber-low);
+}
+.conversation-list__item--active:hover {
+  color: var(--amber-hi);
+  background: var(--amber-low);
+}
+
+.conversation-list__title {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conversation-list__menu-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 140ms ease, background 140ms ease, color 140ms ease;
+}
+.conversation-list__row:hover .conversation-list__menu-btn,
+.conversation-list__menu-btn:focus-visible,
+.conversation-list__menu-btn[aria-expanded="true"] {
+  opacity: 1;
+}
+.conversation-list__menu-btn:hover,
+.conversation-list__menu-btn[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.conversation-list__menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 140px;
+  margin-top: 0.2rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--divider);
+  border-radius: 10px;
+  padding: 0.3rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  z-index: 30;
+}
+
+.conversation-list__menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.6rem;
+  background: transparent;
+  border: none;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.conversation-list__menu-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.conversation-list__menu-item--danger {
+  color: var(--danger);
+}
+.conversation-list__menu-item--danger:hover {
+  background: rgba(207, 102, 121, 0.12);
+  color: var(--danger);
+}
+
+/* ------------------------------------------------------------------ */
+/* User menu — avatar + name at the bottom of the expanded sidebar    */
+/* ------------------------------------------------------------------ */
+
+.user-menu {
+  position: relative;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--divider);
+}
+
+.user-menu__trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.user-menu__trigger:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.user-menu__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--divider);
+}
+.user-menu__avatar--initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--amber);
+  background: var(--amber-low);
+  border-color: var(--amber-muted);
+}
+
+.user-menu__display {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-menu__panel {
+  position: absolute;
+  bottom: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  background: var(--bg-elev);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  padding: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  z-index: 10;
+}
+
+.user-menu__identity {
+  padding: 0.5rem 0.6rem 0.4rem;
+  border-bottom: 1px solid var(--divider);
+}
+.user-menu__name {
+  font-size: 0.9rem;
+  color: var(--text-bright);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu__email {
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  margin-top: 0.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-menu__signout {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.user-menu__signout:hover {
+  background: var(--amber-low);
+  color: var(--amber-hi);
 }
 
 /* Backdrop dim for mobile sidebar overlay */
@@ -749,7 +1002,6 @@ body::before {
 .composer__wrap {
   display: flex;
   flex-direction: column;
-  min-height: 120px;
   background: var(--bg);
   border: 1px solid var(--amber-muted);
   border-radius: 16px;
@@ -905,3 +1157,85 @@ body::before {
     pointer-events: auto;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Auth — login screen + protected-route loading state                */
+/* ------------------------------------------------------------------ */
+
+.auth-loading {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+}
+
+.login {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.login__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  text-align: center;
+  max-width: 360px;
+  width: 100%;
+}
+
+.login__brand {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 3rem;
+  letter-spacing: 0.01em;
+  color: var(--amber);
+  text-shadow: 0 0 28px var(--amber-glow);
+}
+
+.login__tagline {
+  margin: 0 0 0.5rem;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+}
+
+.login__google {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.7rem 1.1rem;
+  background: transparent;
+  color: var(--amber);
+  border: 1px solid var(--amber-muted);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.login__google:hover:not(:disabled) {
+  background: var(--amber-low);
+  border-color: var(--amber);
+  color: var(--amber-hi);
+}
+.login__google:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.login__error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--danger);
+}
+
